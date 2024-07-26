@@ -44,6 +44,8 @@ let { youtubeKey, searchString, maxResults, table, urlField } = settings;
 maxResults = Math.min(maxResults, 25000);
 
 let totalResults = [];
+let liveTotalRecordsAdded = 0;
+
 try {
     while (maxResults > 0) {
         let resultsToFetch = Math.min(maxResults, 50); // Fetch in batches of 50
@@ -55,7 +57,11 @@ try {
         if (results.length < 50) {
             break; // Stop if fewer results were returned than requested
         }
+
+        output.text(`Found ${totalResults.length} videos based on "${searchString}".`);
     }
+
+    output.text(`Found a total of ${totalResults.length} videos based on "${searchString}". Updating records in the "${table.name}" table.`);
 
     let urlRecords = totalResults.map((result) => ({
         fields: {
@@ -66,9 +72,11 @@ try {
     while (urlRecords.length > 0) {
         let batch = urlRecords.splice(0, 50); // Airtable API limit is 50 records per batch
         await table.createRecordsAsync(batch);
+        liveTotalRecordsAdded += batch.length;
+        output.text(`Updating ${liveTotalRecordsAdded} of ${totalResults.length} records in the "${table.name}" table.`);
     }
 
-    output.text(`Successfully saved ${totalResults.length} YouTube URLs to the table.`);
+    output.text(`Successfully saved ${liveTotalRecordsAdded} YouTube URLs to the "${table.name}" table.`);
 } catch (e) {
     output.text(`Error: ${e.message}`);
 }
