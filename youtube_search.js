@@ -43,6 +43,9 @@ let { youtubeKey, searchString, maxResults, table, urlField } = settings;
 
 maxResults = Math.min(maxResults, 25000);
 
+let existingRecords = await table.selectRecordsAsync({ fields: [urlField.id] });
+let existingUrls = new Set(existingRecords.records.map(record => record.getCellValue(urlField)));
+
 let totalResults = [];
 let liveTotalRecordsAdded = 0;
 
@@ -61,22 +64,22 @@ try {
         output.text(`Found ${totalResults.length} videos based on "${searchString}".`);
     }
 
-    output.text(`Found a total of ${totalResults.length} videos based on "${searchString}". Updating records in the "${table.name}" table.`);
+    output.text(`Found a total of ${totalResults.length} videos based on "${searchString}". Checking for duplicates and updating records in the "${table.name}" table.`);
 
-    let urlRecords = totalResults.map((result) => ({
+    let newRecords = totalResults.filter(result => !existingUrls.has(result.url)).map(result => ({
         fields: {
             [urlField.id]: result.url,
         },
     }));
 
-    while (urlRecords.length > 0) {
-        let batch = urlRecords.splice(0, 50); // Airtable API limit is 50 records per batch
+    while (newRecords.length > 0) {
+        let batch = newRecords.splice(0, 50); // Airtable API limit is 50 records per batch
         await table.createRecordsAsync(batch);
         liveTotalRecordsAdded += batch.length;
         output.text(`Updating ${liveTotalRecordsAdded} of ${totalResults.length} records in the "${table.name}" table.`);
     }
 
-    output.text(`Successfully saved ${liveTotalRecordsAdded} YouTube URLs to the "${table.name}" table.`);
+    output.text(`Successfully saved ${liveTotalRecordsAdded} new YouTube URLs to the "${table.name}" table.`);
 } catch (e) {
     output.text(`Error: ${e.message}`);
 }
