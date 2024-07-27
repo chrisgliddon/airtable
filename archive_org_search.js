@@ -117,6 +117,11 @@ let settings = input.config({
             label: "📄 OCR Text Field",
             description: "Select the field for the OCR text",
         }),
+        input.config.field("descriptionField", {
+            parentTable: "dataTable",
+            label: "📄 Description Field",
+            description: "Select the field for the description",
+        }),
     ],
 });
 
@@ -142,7 +147,8 @@ let {
     rightsField,
     collectionField,
     pdfField,
-    ocrTextField
+    ocrTextField,
+    descriptionField
 } = settings;
 
 // Validate max records input
@@ -153,7 +159,7 @@ if (isNaN(maxRecordsNum) || maxRecordsNum <= 0 || maxRecordsNum > 1000) {
 
 // Function to fetch search results from Archive.org
 async function fetchArchiveResults(searchString, maxRecordsNum, searchLanguage) {
-    let searchURL = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(searchString)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=language&fl[]=publicdate&fl[]=downloads&fl[]=filesize&fl[]=ppi&fl[]=sponsor&fl[]=volume&fl[]=issue&fl[]=lccn&fl[]=uploader&fl[]=ocr&fl[]=rights&fl[]=collection&output=json&rows=${maxRecordsNum}&lang=${searchLanguage}`;
+    let searchURL = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(searchString)} AND language:${searchLanguage}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=language&fl[]=publicdate&fl[]=downloads&fl[]=filesize&fl[]=ppi&fl[]=sponsor&fl[]=volume&fl[]=issue&fl[]=lccn&fl[]=uploader&fl[]=ocr&fl[]=rights&fl[]=collection&output=json&rows=${maxRecordsNum}`;
     let response = await fetch(searchURL);
     if (!response.ok) throw new Error('Failed to fetch search results from Archive.org.');
     let data = await response.json();
@@ -182,14 +188,16 @@ async function fetchItemData(identifier) {
         }
     }
 
+    console.log(`Full metadata for ${identifier}:`, itemData);
+
     return {
-        identifier: identifier,
-        title: itemData.metadata.title || identifier,
+        identifier: itemData.metadata.identifier || '',
+        title: itemData.metadata.title || '',
         creator: itemData.metadata.creator || '',
         language: itemData.metadata.language || '',
         publicdate: itemData.metadata.publicdate || '',
         downloads: itemData.metadata.downloads || '',
-        filesize: itemData.metadata.filesize || '',
+        filesize: itemData.metadata.item_size || '',
         ppi: itemData.metadata.ppi || '',
         sponsor: itemData.metadata.sponsor || '',
         volume: itemData.metadata.volume || '',
@@ -201,7 +209,8 @@ async function fetchItemData(identifier) {
         collection: Array.isArray(itemData.metadata.collection) ? itemData.metadata.collection : [],
         itemURL: itemURL,
         pdfURL: pdfFile ? pdfFile.url : '',
-        ocrText: ocrText
+        ocrText: ocrText,
+        description: itemData.metadata.description || ''
     };
 }
 
@@ -224,11 +233,27 @@ async function getOrCreateCollections(collectionNames, collectionTable) {
             let newRecord = await collectionTable.createRecordAsync({
                 'Name': collectionName
             });
-            collectionRecords[collectionName] = newRecord.id;
+            if (newRecord) {
+                collectionRecords[collectionName] = newRecord.id;
+                console.log(`Created new collection: ${collectionName} with ID: ${newRecord.id}`);
+            } else {
+                console.error(`Failed to create collection: ${collectionName}`);
+            }
         }
     }
 
+    console.log(`Collection records: ${JSON.stringify(collectionRecords)}`);
     return collectionRecords;
+}
+
+// Function to check if a field exists in the table
+async function checkFieldExists(table, fieldId) {
+    let field = table.getField(fieldId);
+    if (!field) {
+        console.error(`Field '${fieldId}' does not exist in table '${table.name}'.`);
+        return false;
+    }
+    return true;
 }
 
 // Main script logic
@@ -241,6 +266,15 @@ async function main() {
     // Assume the collection table is named "Collections"
     let collectionTable = base.getTable('Collections');
 
+    // Check if all required fields exist
+    let requiredFields = [identifierField, titleField, creatorField, languageField, publicDateField, downloadsField, fileSizeField, ppiField, sponsorField, volumeField, issueField, lccnField, uploaderField, ocrField, rightsField, collectionField, pdfField, ocrTextField, descriptionField];
+    let fieldCheckPromises = requiredFields.map(field => checkFieldExists(dataTable, field.id));
+    let fieldsExist = await Promise.all(fieldCheckPromises);
+
+    if (fieldsExist.includes(false)) {
+        throw new Error('One or more required fields are missing in the table.');
+    }
+
     for (let result of results) {
         try {
             let itemData = await fetchItemData(result.identifier);
@@ -248,28 +282,36 @@ async function main() {
                 let collectionNames = itemData.collection;
                 let collectionRecords = await getOrCreateCollections(collectionNames, collectionTable);
 
-                let collectionRecordIds = collectionNames.map(name => ({ id: collectionRecords[name] }));
+                let collectionRecordIds = collectionNames.map(name => {
+                    if (collectionRecords[name]) {
+                        return { id: collectionRecords[name] };
+                    } else {
+                        console.error(`Collection name ${name} does not have a corresponding record ID.`);
+                        return null;
+                    }
+                }).filter(idObj => idObj !== null);
 
-                let recordData = {
-                    [identifierField.id]: itemData.identifier,
-                    [titleField.id]: itemData.title,
-                    [creatorField.id]: itemData.creator,
-                    [languageField.id]: itemData.language,
-                    [publicDateField.id]: itemData.publicdate,
-                    [downloadsField.id]: itemData.downloads,
-                    [fileSizeField.id]: itemData.filesize,
-                    [ppiField.id]: itemData.ppi,
-                    [sponsorField.id]: itemData.sponsor,
-                    [volumeField.id]: itemData.volume,
-                    [issueField.id]: itemData.issue,
-                    [lccnField.id]: itemData.lccn,
-                    [uploaderField.id]: itemData.uploader,
-                    [ocrField.id]: itemData.ocr,
-                    [rightsField.id]: itemData.rights,
-                    [collectionField.id]: collectionRecordIds,
-                    [pdfField.id]: itemData.pdfURL,
-                    [ocrTextField.id]: itemData.ocrText
-                };
+                let recordData = {};
+                if (itemData.identifier) recordData[identifierField.id] = itemData.identifier;
+                if (itemData.title) recordData[titleField.id] = itemData.title;
+                if (itemData.creator) recordData[creatorField.id] = itemData.creator;
+                if (itemData.language) recordData[languageField.id] = itemData.language;
+                if (itemData.publicdate) recordData[publicDateField.id] = itemData.publicdate;
+                if (itemData.downloads) recordData[downloadsField.id] = itemData.downloads;
+                if (itemData.filesize) recordData[fileSizeField.id] = itemData.filesize;
+                if (itemData.ppi) recordData[ppiField.id] = itemData.ppi;
+                if (itemData.sponsor) recordData[sponsorField.id] = itemData.sponsor;
+                if (itemData.volume) recordData[volumeField.id] = itemData.volume;
+                if (itemData.issue) recordData[issueField.id] = itemData.issue;
+                if (itemData.lccn) recordData[lccnField.id] = itemData.lccn;
+                if (itemData.uploader) recordData[uploaderField.id] = itemData.uploader;
+                if (itemData.ocr) recordData[ocrField.id] = itemData.ocr;
+                if (itemData.rights) recordData[rightsField.id] = itemData.rights;
+                if (collectionRecordIds.length > 0) recordData[collectionField.id] = collectionRecordIds;
+                if (itemData.pdfURL) recordData[pdfField.id] = itemData.pdfURL;
+                if (itemData.ocrText) recordData[ocrTextField.id] = itemData.ocrText;
+                if (itemData.description) recordData[descriptionField.id] = itemData.description;
+                recordData['Item URL'] = itemData.itemURL;
 
                 await dataTable.createRecordAsync(recordData);
                 processedCount++;
