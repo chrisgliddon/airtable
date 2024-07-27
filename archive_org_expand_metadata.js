@@ -109,6 +109,15 @@ async function checkFieldExists(table, fieldId) {
     return true;
 }
 
+// Function to truncate data if it exceeds a certain length
+function truncateData(data, maxLength) {
+    if (data.length > maxLength) {
+        console.warn(`Data length (${data.length}) exceeds maxLength (${maxLength}). Truncating data.`);
+        return data.substring(0, maxLength);
+    }
+    return data;
+}
+
 // Main script logic
 async function main() {
     let records = await view.selectRecordsAsync({ fields: [metadataUrlField] });
@@ -117,6 +126,7 @@ async function main() {
 
     let processedCount = 0;
     let skippedCount = 0;
+    const maxFieldLength = 100000; // Define the maximum length for the fields
 
     // Check if all required fields exist
     let requiredFields = [metadataUrlField, downloadsField, fileSizeField, sponsorField, volumeField, issueField, ocrField, rightsField, pdfField, longTextField];
@@ -138,19 +148,20 @@ async function main() {
             let itemData = await fetchMetadata(metadataURL);
             if (itemData && itemData.metadata) {
                 let recordData = {}; // Initialize recordData as an object with an index signature
-                if (itemData.metadata.downloads) recordData[downloadsField.id] = itemData.metadata.downloads;
-                if (itemData.metadata.item_size) recordData[fileSizeField.id] = itemData.metadata.item_size;
-                if (itemData.metadata.sponsor) recordData[sponsorField.id] = itemData.metadata.sponsor;
-                if (itemData.metadata.volume) recordData[volumeField.id] = itemData.metadata.volume;
-                if (itemData.metadata.issue) recordData[issueField.id] = itemData.metadata.issue;
-                if (itemData.metadata.ocr) recordData[ocrField.id] = itemData.metadata.ocr;
-                if (itemData.metadata.rights) recordData[rightsField.id] = itemData.metadata.rights;
-                
+                if (itemData.metadata.downloads) recordData[downloadsField.id] = truncateData(itemData.metadata.downloads.toString(), maxFieldLength);
+                if (itemData.metadata.item_size) recordData[fileSizeField.id] = truncateData(itemData.metadata.item_size.toString(), maxFieldLength);
+                if (itemData.metadata.sponsor) recordData[sponsorField.id] = truncateData(itemData.metadata.sponsor.toString(), maxFieldLength);
+                if (itemData.metadata.volume) recordData[volumeField.id] = truncateData(itemData.metadata.volume.toString(), maxFieldLength);
+                if (itemData.metadata.issue) recordData[issueField.id] = truncateData(itemData.metadata.issue.toString(), maxFieldLength);
+                if (itemData.metadata.ocr) recordData[ocrField.id] = truncateData(itemData.metadata.ocr.toString(), maxFieldLength);
+                if (itemData.metadata.rights) recordData[rightsField.id] = truncateData(itemData.metadata.rights.toString(), maxFieldLength);
+
                 let pdfFile = itemData.files ? itemData.files.find(file => file.format === 'PDF' || file.name.endsWith('.pdf')) : null;
                 if (pdfFile) recordData[pdfField.id] = `https://archive.org/download/${itemData.metadata.identifier}/${pdfFile.name}`;
 
                 // Store the full response in the Long Text field
-                recordData[longTextField.id] = JSON.stringify(itemData, null, 2);
+                let longTextData = JSON.stringify(itemData, null, 2);
+                recordData[longTextField.id] = truncateData(longTextData, maxFieldLength);
 
                 // Log the record data being processed for debugging
                 console.log(`Updating record ${record.id} with data:`, recordData);
