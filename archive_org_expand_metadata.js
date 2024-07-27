@@ -70,6 +70,7 @@ let settings = input.config({
 
 let {
     dataTable,
+    view,
     maxRecords,
     metadataUrlField,
     downloadsField,
@@ -110,9 +111,9 @@ async function checkFieldExists(table, fieldId) {
 
 // Main script logic
 async function main() {
-    let records = await dataTable.selectRecordsAsync({ fields: [metadataUrlField] });
+    let records = await view.selectRecordsAsync({ fields: [metadataUrlField] });
 
-    output.text(`Found ${records.records.length} records in the table`);
+    output.text(`Found ${records.records.length} records in the view`);
 
     let processedCount = 0;
     let skippedCount = 0;
