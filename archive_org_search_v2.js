@@ -89,18 +89,23 @@ async function fetchExistingIdentifiers(table, identifierField) {
     return identifiers;
 }
 
+// Helper function to ensure a field value is a string
+function ensureString(value) {
+    return value && typeof value === 'string' ? value : '';
+}
+
 // Function to add new records to Airtable
 async function addNewRecords(table, newRecords) {
     let createRecords = newRecords.map(record => ({
         fields: {
-            [identifierField.name]: record.Identifier,
-            [titleField.name]: record.Title,
-            [creatorField.name]: record.Creator,
-            [languageField.name]: record.Language,
-            [publicDateField.name]: record.PublicDate,
-            [uploaderField.name]: record.Uploader,
-            [descriptionField.name]: record.Description,
-            [itemUrlField.name]: `https://archive.org/details/${record.Identifier}`
+            [identifierField.name]: ensureString(record.Identifier),
+            [titleField.name]: ensureString(record.Title),
+            [creatorField.name]: ensureString(record.Creator),
+            [languageField.name]: ensureString(record.Language),
+            [publicDateField.name]: ensureString(record.PublicDate),
+            [uploaderField.name]: ensureString(record.Uploader),
+            [descriptionField.name]: ensureString(record.Description),
+            [itemUrlField.name]: `https://archive.org/details/${ensureString(record.Identifier)}`
         }
     }));
     await table.createRecordsAsync(createRecords);
@@ -133,12 +138,12 @@ async function main() {
             }
             return {
                 Identifier: result.identifier,
-                Title: result.title,
-                Creator: result.creator,
-                Language: result.language,
-                PublicDate: result.publicdate,
-                Uploader: result.uploader,
-                Description: result.description,
+                Title: ensureString(result.title),
+                Creator: ensureString(result.creator),
+                Language: ensureString(result.language),
+                PublicDate: ensureString(result.publicdate),
+                Uploader: ensureString(result.uploader),
+                Description: ensureString(result.description),
                 ItemURL: `https://archive.org/details/${result.identifier}`,
                 ExistsInAirtable: existsInAirtable ? "Yes" : "No"
             };
