@@ -94,21 +94,25 @@ function ensureString(value) {
     return value && typeof value === 'string' ? value : '';
 }
 
-// Function to add new records to Airtable
+// Function to add new records to Airtable in batches
 async function addNewRecords(table, newRecords) {
-    let createRecords = newRecords.map(record => ({
-        fields: {
-            [identifierField.name]: ensureString(record.Identifier),
-            [titleField.name]: ensureString(record.Title),
-            [creatorField.name]: ensureString(record.Creator),
-            [languageField.name]: ensureString(record.Language),
-            [publicDateField.name]: ensureString(record.PublicDate),
-            [uploaderField.name]: ensureString(record.Uploader),
-            [descriptionField.name]: ensureString(record.Description),
-            [itemUrlField.name]: `https://archive.org/details/${ensureString(record.Identifier)}`
-        }
-    }));
-    await table.createRecordsAsync(createRecords);
+    const batchSize = 50;
+    for (let i = 0; i < newRecords.length; i += batchSize) {
+        const batch = newRecords.slice(i, i + batchSize);
+        let createRecords = batch.map(record => ({
+            fields: {
+                [identifierField.name]: ensureString(record.Identifier),
+                [titleField.name]: ensureString(record.Title),
+                [creatorField.name]: ensureString(record.Creator),
+                [languageField.name]: ensureString(record.Language),
+                [publicDateField.name]: ensureString(record.PublicDate),
+                [uploaderField.name]: ensureString(record.Uploader),
+                [descriptionField.name]: ensureString(record.Description),
+                [itemUrlField.name]: `https://archive.org/details/${ensureString(record.Identifier)}`
+            }
+        }));
+        await table.createRecordsAsync(createRecords);
+    }
 }
 
 // Main script logic
