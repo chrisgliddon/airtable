@@ -10,10 +10,19 @@ let settings = input.config({
             label: "🔢 Max Records",
             description: "Enter the maximum number of records to fetch (1-1000)",
         }),
+        input.config.table("table", {
+            label: "📄 Table",
+            description: "Select the table that contains the identifier field",
+        }),
+        input.config.field("identifierField", {
+            parentTable: "table",
+            label: "📄 Identifier Field",
+            description: "Select the field that stores the identifier in your Airtable table",
+        }),
     ],
 });
 
-let { searchString, maxRecords } = settings;
+let { searchString, maxRecords, table, identifierField } = settings;
 let searchLanguage = "jpn"; // Hardcoded search language
 let mediaType = "texts"; // Hardcoded media type
 
@@ -32,19 +41,37 @@ async function fetchArchiveResults(searchString, maxRecordsNum, searchLanguage, 
     return data.response.docs;
 }
 
+// Function to fetch existing identifiers from Airtable
+async function fetchExistingIdentifiers(table, identifierField) {
+    let query = await table.selectRecordsAsync();
+    let identifiers = new Set();
+    for (let record of query.records) {
+        let identifier = record.getCellValue(identifierField);
+        if (identifier) {
+            identifiers.add(identifier);
+        }
+    }
+    return identifiers;
+}
+
 // Main script logic
 async function main() {
     try {
+        // Fetch existing identifiers from Airtable
+        let existingIdentifiers = await fetchExistingIdentifiers(table, identifierField);
+
+        // Fetch search results from Archive.org
         let results = await fetchArchiveResults(searchString, maxRecordsNum, searchLanguage, mediaType);
         output.text(`Fetched ${results.length} results from Archive.org`);
 
-        // Prepare data for output table
+        // Prepare data for output table, checking for existing identifiers
         let outputData = results.map(result => ({
             Identifier: result.identifier,
             Title: result.title,
             Creator: result.creator,
             Language: result.language,
-            PublicDate: result.publicdate
+            PublicDate: result.publicdate,
+            ExistsInAirtable: existingIdentifiers.has(result.identifier) ? "Yes" : "No"
         }));
 
         // Display results in an output table
