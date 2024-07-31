@@ -39,6 +39,18 @@ Quick and dirty from the `snippet` blob as a Formula field in Airtable:
 
 `REGEX_EXTRACT({snippet}, '"publishedAt":"([^"]*)"')`
 
+### Language
+
+Checks to see if there's actually a result for the default language in the JSON blob. Displays blank if there's not. Default behavior would just show `#ERROR!` messages, this solves that.
+
+`IF(
+    ISERROR(REGEX_EXTRACT({snippet}, '"defaultAudioLanguage":"([^"]*)"')), 
+    "", 
+    REGEX_EXTRACT({snippet}, '"defaultAudioLanguage":"([^"]*)"')
+)
+`
+
+
 ## statistics
 
 ### Views
