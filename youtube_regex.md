@@ -12,11 +12,38 @@ The default Airtable "YouTube Analytics" script will let you grab stuff from You
 
 # Step 2: Parse with REGEX
 
-## Statistics
+## snippet
+
+### Title
+Quick and dirty from the `snippet` blob as a Formula field in Airtable:
+
+`REGEX_EXTRACT({snippet}, '"title":"([^"]*)"')`
+
+### Description
+
+Quick and dirty from the `snippet` blob as a Formula field in Airtable:
+
+`REGEX_EXTRACT({snippet}, '"description":"([^"]*)"')`
+
+### Thumbnail URLs
+
+Annoyingly, there are multiple types of thumbnails. I start with `maxres`, which is the highest-fidelity one:
+
+`REGEX_EXTRACT({snippet}, '"maxres":{"url":"([^"]*)"')`
+
+Then I run the Airtable "URL to attachments" script to convert the URL to an attachment. Mainly so I can have prettier galleries. I'm painfully visual, so I like having pretty pictures. Easier to visually scan a large pile of videos this way.
+
+### Published Date
+
+Quick and dirty from the `snippet` blob as a Formula field in Airtable:
+
+`REGEX_EXTRACT({snippet}, '"publishedAt":"([^"]*)"')`
+
+## statistics
 
 ### Views
 
-Formula field with this:
+Extract from the `statistics` blob as a Formula field in Airtable:
 
 `IF(
     VALUE(REGEX_EXTRACT({statistics}, '"viewCount":"([^"]*)"')) < 1000, 
@@ -42,9 +69,37 @@ Formula field with this:
 )
 `
 
+### Comment Count
+
+Extract from the `statistics` blob as a Formula field in Airtable:
+
+`IF(
+    VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) < 1000, 
+    VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')),
+    IF(
+        AND(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) >= 1000, VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) < 1000000),
+        CONCATENATE(LEFT(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", LEN(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "") - 3), ",", RIGHT(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", 3)),
+        IF(
+            AND(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) >= 1000000, VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) < 1000000000),
+            CONCATENATE(
+                LEFT(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", LEN(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "") - 6), ",",
+                MID(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", LEN(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "") - 5, 3), ",",
+                RIGHT(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", 3)
+            ),
+            CONCATENATE(
+                LEFT(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", LEN(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "") - 9), ",",
+                MID(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", LEN(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "") - 8, 3), ",",
+                MID(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", LEN(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "") - 5, 3), ",",
+                RIGHT(VALUE(REGEX_EXTRACT({statistics}, '"commentCount":"([^"]*)"')) & "", 3)
+            )
+        )
+    )
+)
+`
+
 ### Like Count
 
-Formula field with this:
+Extract from the `statistics` blob as a Formula field in Airtable:
 
 `IF(
     VALUE(REGEX_EXTRACT({statistics}, '"likeCount":"([^"]*)"')) < 1000, 
