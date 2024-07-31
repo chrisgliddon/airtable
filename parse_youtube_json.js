@@ -38,6 +38,7 @@ async function extractAndFormatJSON() {
     let { table, statisticsField, snippetField, viewCountField, likeCountField, favoriteCountField, commentCountField, defaultAudioLanguageField } = settings;
 
     let query = await table.selectRecordsAsync();
+    let outputData = [];
 
     // Loop through each record
     for (let record of query.records) {
@@ -45,15 +46,17 @@ async function extractAndFormatJSON() {
         let statistics = record.getCellValue(statisticsField);
         let snippet = record.getCellValue(snippetField);
 
+        let viewCount, likeCount, favoriteCount, commentCount, defaultAudioLanguage;
+
         if (statistics) {
             try {
                 let statisticsJson = JSON.parse(statistics);
 
                 // Extract values from statistics
-                let viewCount = statisticsJson.viewCount ? parseInt(statisticsJson.viewCount, 10) : null;
-                let likeCount = statisticsJson.likeCount ? parseInt(statisticsJson.likeCount, 10) : null;
-                let favoriteCount = statisticsJson.favoriteCount ? parseInt(statisticsJson.favoriteCount, 10) : null;
-                let commentCount = statisticsJson.commentCount ? parseInt(statisticsJson.commentCount, 10) : null;
+                viewCount = statisticsJson.viewCount ? parseInt(statisticsJson.viewCount, 10) : null;
+                likeCount = statisticsJson.likeCount ? parseInt(statisticsJson.likeCount, 10) : null;
+                favoriteCount = statisticsJson.favoriteCount ? parseInt(statisticsJson.favoriteCount, 10) : null;
+                commentCount = statisticsJson.commentCount ? parseInt(statisticsJson.commentCount, 10) : null;
 
                 // Update the record with the extracted and formatted values
                 await table.updateRecordAsync(record.id, {
@@ -72,7 +75,7 @@ async function extractAndFormatJSON() {
                 let snippetJson = JSON.parse(snippet);
 
                 // Extract default audio language
-                let defaultAudioLanguage = snippetJson.defaultAudioLanguage ? snippetJson.defaultAudioLanguage : "";
+                defaultAudioLanguage = snippetJson.defaultAudioLanguage ? snippetJson.defaultAudioLanguage : "";
 
                 // Update the record with the extracted value
                 await table.updateRecordAsync(record.id, {
@@ -82,7 +85,30 @@ async function extractAndFormatJSON() {
                 console.log(`Error parsing snippet JSON for record ${record.id}: ${e}`);
             }
         }
+
+        // Add data to output table
+        outputData.push({
+            RecordID: record.id,
+            ViewCount: viewCount,
+            LikeCount: likeCount,
+            FavoriteCount: favoriteCount,
+            CommentCount: commentCount,
+            DefaultAudioLanguage: defaultAudioLanguage
+        });
+
+        // Periodically update the output to show progress
+        if (outputData.length % 10 === 0) {
+            output.clear();
+            output.markdown(`Processed ${outputData.length} records so far...`);
+            output.table(outputData);
+        }
     }
+
+    // Final output
+    output.clear();
+    output.markdown(`Processed all records.`);
+    output.table(outputData);
+    output.text('Update complete.');
 }
 
 await extractAndFormatJSON();
