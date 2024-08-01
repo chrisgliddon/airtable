@@ -1,5 +1,5 @@
 let settings = input.config({
-    title: "Shorten YouTube Video Titles",
+    title: "Shorten Video Titles with AI",
     description: `This script uses the OpenAI API to shorten YouTube video titles based on the video's title and description. The shortened title should include the key subject of the video within the first 30 characters.`,
     items: [
         input.config.text("openAiKey", {
