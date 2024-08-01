@@ -47,7 +47,11 @@ You will need a [YouTube Data API v3 key](https://developers.google.com/youtube/
         }),
         input.config.field("thumbnailField", {
             parentTable: "table",
-            label: "💾 Channel thumbnail URL",
+            label: "💾 Channel thumbnail (as attachment)",
+        }),
+        input.config.field("snippetField", {
+            parentTable: "table",
+            label: "💾 JSON Snippet",
         }),
     ],
 });
@@ -84,12 +88,13 @@ async function fetchChannelData(key, items) {
         viewCount: Number(item.statistics.viewCount),
         videoCount: Number(item.statistics.videoCount),
         thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
+        snippet: JSON.stringify(item.snippet), // Store the snippet JSON blob
     }));
 }
 
 output.markdown(description);
 
-let { youtubeKey, table, channelIdField, titleField, descriptionField, subscriberCountField, viewCountField, videoCountField, thumbnailField } = settings;
+let { youtubeKey, table, channelIdField, titleField, descriptionField, subscriberCountField, viewCountField, videoCountField, thumbnailField, snippetField } = settings;
 
 output.text("Configuration loaded successfully.");
 
@@ -182,6 +187,7 @@ while (annotatedItems.length) {
         fields: {
             [titleField.id]: item.title,
             [descriptionField.id]: item.description,
+            [snippetField.id]: item.snippet, // Add snippet JSON blob
         },
     }));
 
@@ -197,7 +203,7 @@ while (annotatedItems.length) {
     let attachmentRecords = workingSet.map((item) => ({
         id: item.recordId,
         fields: {
-            [thumbnailField.id]: [{ url: item.thumbnail }],
+            [thumbnailField.id]: [{ url: item.thumbnail, filename: `${item.title}_thumbnail.jpg` }],
         },
     }));
 
