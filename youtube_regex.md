@@ -25,6 +25,12 @@ Quick and dirty from the `snippet` blob as a Formula field in Airtable:
 
 `REGEX_EXTRACT({snippet}, '"description":"([^"]*)"')`
 
+### Channel ID
+
+Grabs the username hash from `snippet`:
+
+`REGEX_EXTRACT({snippet}, '"channelId":"([^"]*)"')`
+
 ### Thumbnail URLs
 
 Annoyingly, there are multiple types of thumbnails. I start with `maxres`, which is the highest-fidelity one:
