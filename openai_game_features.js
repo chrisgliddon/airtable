@@ -29,6 +29,11 @@ let settings = input.config({
             label: "🔗 Feature Link Field",
             description: "Select the field linking games to features",
         }),
+        input.config.field("completionCheckboxField", {
+            parentTable: "gamesTable",
+            label: "✅ Completion Checkbox Field",
+            description: "Select the checkbox field to mark when processing is complete",
+        }),
         input.config.view("gameView", {
             parentTable: "gamesTable",
             label: "👁️ Game View",
@@ -53,6 +58,7 @@ let {
     gameNameField,
     featureNameField,
     featureLinkField,
+    completionCheckboxField,
     gameView,
     model
 } = settings;
@@ -117,7 +123,7 @@ async function fetchGameFeatures(gameName) {
     let featureList = data.choices[0].message.content
         .split(',')
         .map(f => f.trim())
-        .filter(f => f.length > 0);
+        .filter(f => f.length > 1 && !f.includes('.') && !f.includes('Explain') && !f.includes('this means')); // Remove invalid entries
 
     output.text(`Features identified for "${gameName}": ${featureList.join(', ')}`);
     return featureList;
@@ -125,7 +131,7 @@ async function fetchGameFeatures(gameName) {
 
 // Fetch records from the specified view
 let query = await gameView.selectRecordsAsync({
-    fields: [gameNameField.id, featureLinkField.id]
+    fields: [gameNameField.id, featureLinkField.id, completionCheckboxField.id]
 });
 
 let results = [];
@@ -174,10 +180,11 @@ for (let record of query.records) {
         }
     }
 
-    // Update the game record with the linked features
+    // Update the game record with the linked features and check the completion checkbox
     try {
         await gamesTable.updateRecordAsync(record.id, {
-            [featureLinkField.id]: featureIds
+            [featureLinkField.id]: featureIds,
+            [completionCheckboxField.id]: true
         });
         output.text(`Linked features for "${gameName}": ${features.join(', ')}`);
     } catch (error) {
