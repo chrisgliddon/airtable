@@ -101,6 +101,27 @@ async function fetchExistingRecords(table, linkField) {
     return records;
 }
 
+// Function to scrape SoundCloud stats directly from the track page
+async function scrapeSoundCloudStats(trackUrl) {
+    let response = await remoteFetchAsync(trackUrl);
+    if (!response.ok) throw new Error('Failed to fetch track page.');
+    
+    let htmlText = await response.text();
+    
+    // Play count
+    let playCountMatch = htmlText.match(/"playback_count":(\d+)/);
+    let playCount = playCountMatch ? parseInt(playCountMatch[1]) : 0;
+    
+    // Comment count
+    let commentCountMatch = htmlText.match(/"comment_count":(\d+)/);
+    let commentCount = commentCountMatch ? parseInt(commentCountMatch[1]) : 0;
+    
+    return {
+        plays: playCount,
+        comments: commentCount
+    };
+}
+
 // Function to update the output table in real-time
 function updateProgress(progressData) {
     output.clear();
@@ -126,8 +147,10 @@ async function main() {
             let pubDate = extractValue(item, "pubDate");
             let guid = extractValue(item, "guid");
             let duration = extractValue(item, "itunes:duration") || 0; // Adjust if duration is present elsewhere
-            let plays = extractValue(item, "soundcloud:playcount") || 0; // Attempt to parse custom play count
-            let comments = extractValue(item, "soundcloud:commentcount") || 0; // Attempt to parse custom comment count
+
+            // Scrape play count and comment count directly from the SoundCloud page
+            let { plays, comments } = await scrapeSoundCloudStats(link);
+
             let contentSnippet = description.substring(0, 100); // Example snippet logic
 
             let fields = {
@@ -138,8 +161,8 @@ async function main() {
                 [contentField.name]: description,
                 [contentSnippetField.name]: contentSnippet,
                 [pubDateField.name]: new Date(pubDate),
-                [playsField.name]: parseInt(plays) || 0,
-                [commentsField.name]: parseInt(comments) || 0,
+                [playsField.name]: plays,
+                [commentsField.name]: comments,
             };
 
             if (existingRecords[link]) {
