@@ -21,6 +21,11 @@ let settings = input.config({
             label: "🎵 Title Field",
             description: "Select the field to store the track title",
         }),
+        input.config.field("durationField", {
+            parentTable: "table",
+            label: "⏳ Duration Field",
+            description: "Select the field to store the track duration",
+        }),
         input.config.field("playsField", {
             parentTable: "table",
             label: "▶️ Plays Field",
@@ -59,6 +64,7 @@ let {
     table,
     linkField,
     titleField,
+    durationField,
     playsField,
     commentsField,
     pubDateField,
@@ -95,6 +101,12 @@ async function fetchExistingRecords(table, linkField) {
     return records;
 }
 
+// Function to update the output table in real-time
+function updateProgress(progressData) {
+    output.clear();
+    output.table(progressData);
+}
+
 // Main script logic
 async function main() {
     try {
@@ -105,8 +117,6 @@ async function main() {
         let rssText = await fetchRSSFeed(rssUrl);
         let items = rssText.match(/<item>[\s\S]*?<\/item>/g) || [];
 
-        let updates = [];
-        let newRecords = [];
         let progressData = [];
 
         for (let item of items) {
@@ -114,13 +124,17 @@ async function main() {
             let title = extractValue(item, "title");
             let description = extractValue(item, "description");
             let pubDate = extractValue(item, "pubDate");
+            let guid = extractValue(item, "guid");
+            let duration = extractValue(item, "itunes:duration") || 0; // Adjust if duration is present elsewhere
+            let plays = extractValue(item, "soundcloud:playcount") || 0; // Attempt to parse custom play count
+            let comments = extractValue(item, "soundcloud:commentcount") || 0; // Attempt to parse custom comment count
             let contentSnippet = description.substring(0, 100); // Example snippet logic
-            let plays = extractValue(item, "itunes:duration") || 0; // Adjust if play count is present elsewhere
-            let comments = extractValue(item, "itunes:explicit") || 0; // Adjust if comment count is present elsewhere
 
             let fields = {
                 [titleField.name]: title,
                 [linkField.name]: link,
+                [guidField.name]: guid,
+                [durationField.name]: duration,
                 [contentField.name]: description,
                 [contentSnippetField.name]: contentSnippet,
                 [pubDateField.name]: new Date(pubDate),
@@ -131,25 +145,18 @@ async function main() {
             if (existingRecords[link]) {
                 // Update existing record
                 await table.updateRecordAsync(existingRecords[link].id, fields);
-                updates.push(fields);
                 progressData.push({ Status: "Updated", Link: link, Title: title });
             } else {
                 // Create a new record
-                newRecords.push({ fields });
+                await table.createRecordAsync({ fields });
                 progressData.push({ Status: "New Record", Link: link, Title: title });
             }
+
+            // Update progress after each record
+            updateProgress(progressData);
         }
 
-        // Add new records to Airtable
-        const batchSize = 50;
-        for (let i = 0; i < newRecords.length; i += batchSize) {
-            await table.createRecordsAsync(newRecords.slice(i, i + batchSize));
-        }
-
-        // Output progress table
-        output.table(progressData);
-
-        output.text(`Updated ${updates.length} records and added ${newRecords.length} new records to Airtable.`);
+        output.text(`Script completed. Processed ${progressData.length} records.`);
     } catch (error) {
         output.text(`Error: ${error.message}`);
     }
