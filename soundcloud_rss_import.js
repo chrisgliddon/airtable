@@ -82,52 +82,62 @@ function extractValue(xmlString, tagName) {
     return match ? match[1] : '';
 }
 
-// Function to fetch existing GUIDs from Airtable
-async function fetchExistingGUIDs(table, guidField) {
+// Function to fetch existing records from Airtable
+async function fetchExistingRecords(table, linkField) {
     let query = await table.selectRecordsAsync();
-    let guids = new Set();
+    let records = {};
     for (let record of query.records) {
-        let guid = record.getCellValue(guidField);
-        if (guid) guids.add(guid);
+        let link = record.getCellValue(linkField);
+        if (link) {
+            records[link] = record;
+        }
     }
-    return guids;
+    return records;
 }
 
 // Main script logic
 async function main() {
     try {
-        // Fetch existing GUIDs from Airtable
-        let existingGUIDs = await fetchExistingGUIDs(table, guidField);
+        // Fetch existing records from Airtable
+        let existingRecords = await fetchExistingRecords(table, linkField);
 
         // Fetch and parse the RSS feed
         let rssText = await fetchRSSFeed(rssUrl);
         let items = rssText.match(/<item>[\s\S]*?<\/item>/g) || [];
 
+        let updates = [];
         let newRecords = [];
-        for (let item of items) {
-            let guid = extractValue(item, "guid");
-            if (existingGUIDs.has(guid)) continue;
+        let progressData = [];
 
-            let title = extractValue(item, "title");
+        for (let item of items) {
             let link = extractValue(item, "link");
+            let title = extractValue(item, "title");
             let description = extractValue(item, "description");
             let pubDate = extractValue(item, "pubDate");
             let contentSnippet = description.substring(0, 100); // Example snippet logic
             let plays = extractValue(item, "itunes:duration") || 0; // Adjust if play count is present elsewhere
             let comments = extractValue(item, "itunes:explicit") || 0; // Adjust if comment count is present elsewhere
 
-            newRecords.push({
-                fields: {
-                    [guidField.name]: guid,
-                    [titleField.name]: title,
-                    [linkField.name]: link,
-                    [contentField.name]: description,
-                    [contentSnippetField.name]: contentSnippet,
-                    [pubDateField.name]: new Date(pubDate),
-                    [playsField.name]: parseInt(plays) || 0, // Example logic, adjust as necessary
-                    [commentsField.name]: parseInt(comments) || 0, // Example logic, adjust as necessary
-                }
-            });
+            let fields = {
+                [titleField.name]: title,
+                [linkField.name]: link,
+                [contentField.name]: description,
+                [contentSnippetField.name]: contentSnippet,
+                [pubDateField.name]: new Date(pubDate),
+                [playsField.name]: parseInt(plays) || 0,
+                [commentsField.name]: parseInt(comments) || 0,
+            };
+
+            if (existingRecords[link]) {
+                // Update existing record
+                await table.updateRecordAsync(existingRecords[link].id, fields);
+                updates.push(fields);
+                progressData.push({ Status: "Updated", Link: link, Title: title });
+            } else {
+                // Create a new record
+                newRecords.push({ fields });
+                progressData.push({ Status: "New Record", Link: link, Title: title });
+            }
         }
 
         // Add new records to Airtable
@@ -136,7 +146,10 @@ async function main() {
             await table.createRecordsAsync(newRecords.slice(i, i + batchSize));
         }
 
-        output.text(`Added ${newRecords.length} new records to Airtable.`);
+        // Output progress table
+        output.table(progressData);
+
+        output.text(`Updated ${updates.length} records and added ${newRecords.length} new records to Airtable.`);
     } catch (error) {
         output.text(`Error: ${error.message}`);
     }
