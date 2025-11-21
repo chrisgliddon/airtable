@@ -114,27 +114,43 @@ async function resizeIfNeeded(base64, maxMB = 1.5) {
     return base64;
 }
 
+// Manual base64 encoding (btoa replacement)
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let base64 = '';
+    
+    for (let i = 0; i < bytes.length; i += 3) {
+        const byte1 = bytes[i];
+        const byte2 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+        const byte3 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+        
+        const encoded1 = byte1 >> 2;
+        const encoded2 = ((byte1 & 3) << 4) | (byte2 >> 4);
+        const encoded3 = ((byte2 & 15) << 2) | (byte3 >> 6);
+        const encoded4 = byte3 & 63;
+        
+        base64 += base64Chars[encoded1] + base64Chars[encoded2];
+        base64 += i + 1 < bytes.length ? base64Chars[encoded3] : '=';
+        base64 += i + 2 < bytes.length ? base64Chars[encoded4] : '=';
+    }
+    
+    return base64;
+}
+
 // Convert URL to base64 - FIXED VERSION
 async function urlToB64(url) {
     try {
         const resp = await remoteFetchAsync(url);
         if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
         
-        // Read response as blob only once
-        const blob = await resp.blob();
+        // Read response as arrayBuffer
+        const arrayBuffer = await resp.arrayBuffer();
         
-        // Use FileReader to convert blob to base64
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const dataUrl = reader.result;
-                // Extract just the base64 part
-                const base64 = dataUrl.split(',')[1];
-                resolve(base64);
-            };
-            reader.onerror = () => reject(new Error('Failed to read file'));
-            reader.readAsDataURL(blob);
-        });
+        // Convert ArrayBuffer to base64 using manual encoding
+        const base64 = arrayBufferToBase64(arrayBuffer);
+        
+        return base64;
         
     } catch (e) {
         output.text(`❌ ${e.message}`);
@@ -142,36 +158,36 @@ async function urlToB64(url) {
     }
 }
 
-// Upload to Cloudinary (Unsigned)
+// Upload to Cloudinary (Unsigned) - FIXED VERSION
 async function uploadToCloudinary(base64Image, recordId) {
     if (!hasCloudinary) return null;
     
     try {
         const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
         
-        // Clean record ID - remove slashes and special chars
-        const cleanId = recordId.replace(/[\/\\]/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+        // Create simple, clean public_id (no slashes, no special chars)
+        const timestamp = Date.now();
+        const cleanId = recordId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+        const publicId = `gemini_${cleanId}_${timestamp}`;
         
-        // Unsigned upload with preset
-        const formData = {
-            file: `data:image/png;base64,${base64Image}`,
-            upload_preset: uploadPreset,
-            folder: 'airtable_generated',
-            public_id: `gemini_${cleanId}_${Date.now()}`,
-            tags: `gemini,${model},${ratio},${res}`
-        };
+        // Build form data as URL-encoded string
+        const formParams = new URLSearchParams();
+        formParams.append('file', `data:image/png;base64,${base64Image}`);
+        formParams.append('upload_preset', uploadPreset);
+        formParams.append('public_id', publicId);
+        formParams.append('folder', 'airtable_generated');
         
         const resp = await remoteFetchAsync(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: JSON.stringify(formData)
+            body: formParams.toString()
         });
         
         if (!resp.ok) {
             const err = await resp.text();
-            throw new Error(`Cloudinary ${resp.status}: ${err.substring(0, 150)}`);
+            throw new Error(`Cloudinary ${resp.status}: ${err.substring(0, 200)}`);
         }
         
         const result = await resp.json();
@@ -183,7 +199,7 @@ async function uploadToCloudinary(base64Image, recordId) {
         output.text(`❌ Cloudinary: ${e.message}`);
         
         // Instructions for user
-        if (e.message.includes('preset')) {
+        if (e.message.includes('preset') || e.message.includes('401') || e.message.includes('400')) {
             output.text('💡 Create unsigned preset in Cloudinary:');
             output.text('1. Go to Settings → Upload');
             output.text('2. Add upload preset');
@@ -339,15 +355,12 @@ async function updateAttachment(recId, imageUrl) {
     }
 }
 
-// Helper for delay
-async function delay(ms) {
-    return new Promise(resolve => {
-        let start = Date.now();
-        while (Date.now() - start < ms) {
-            // Busy wait
-        }
-        resolve();
-    });
+// Helper for delay - synchronous version
+function delay(ms) {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+        // Busy wait
+    }
 }
 
 // Process record
@@ -456,7 +469,7 @@ async function main() {
         if (i < recs.length - 1) {
             const delayMs = model.includes('pro') ? 3000 : 2000;
             output.text(`⏳ ${delayMs/1000}s...`);
-            await delay(delayMs);
+            delay(delayMs);
         }
     }
     
