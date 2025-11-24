@@ -1,4 +1,4 @@
-// Gemini Image Revision with Feedback
+// Gemini Image Revision with Feedback (Newest First)
 
 let cfg = input.config({
     title: "🔄 Gemini Image Revision",
@@ -33,7 +33,7 @@ let cfg = input.config({
         input.config.field("imgF", {
             parentTable: "tbl",
             label: "Image Field",
-            description: "Attachment field with generated images (reads last, appends new)"
+            description: "Attachment field with generated images (reads newest, prepends new)"
         }),
         input.config.field("feedbackF", {
             parentTable: "tbl",
@@ -279,8 +279,8 @@ async function saveB64(recId, b64) {
     }
 }
 
-// Append attachment to existing field
-async function appendAttachment(recId, imageUrl, iterationNum) {
+// Prepend attachment to existing field (newest first)
+async function prependAttachment(recId, imageUrl, iterationNum) {
     if (!imgF || !imageUrl) return false;
     
     try {
@@ -292,11 +292,12 @@ async function appendAttachment(recId, imageUrl, iterationNum) {
             filename: `revision_${iterationNum}_${Date.now()}.png`
         };
         
+        // PREPEND - newest first
         await tbl.updateRecordAsync(recId, {
-            [imgF.name]: [...existing, newAttachment]
+            [imgF.name]: [newAttachment, ...existing]
         });
         
-        output.text(`📎 Appended as revision #${iterationNum}`);
+        output.text(`📎 Added revision #${iterationNum} (newest first)`);
         return true;
     } catch (e) {
         output.text(`❌ Attachment: ${e.message}`);
@@ -329,14 +330,14 @@ async function processRec(rec) {
             return false;
         }
         
-        // Get the LAST image (most recent)
-        const lastImg = images[images.length - 1];
+        // Get the FIRST image (most recent since we prepend)
+        const latestImg = images[0];
         const iterationNum = images.length + 1;
         
-        output.text(`🔄 Revising image ${images.length} → ${iterationNum}`);
-        output.text(`📷 Source: ${lastImg.filename || 'attachment'}`);
+        output.text(`🔄 Revising → creating revision #${iterationNum}`);
+        output.text(`📷 Source: ${latestImg.filename || 'attachment'}`);
         
-        const imgB64 = await urlToB64(lastImg.url);
+        const imgB64 = await urlToB64(latestImg.url);
         const styleB64 = style?.length ? await urlToB64(style[0].url) : null;
         
         const revisedB64 = await reviseImage(imgB64, feedback, styleB64);
@@ -350,7 +351,7 @@ async function processRec(rec) {
         if (hasCloudinary) {
             const cloudUrl = await uploadToCloudinary(revisedB64, rec.id);
             if (cloudUrl) {
-                success = await appendAttachment(rec.id, cloudUrl, iterationNum) || success;
+                success = await prependAttachment(rec.id, cloudUrl, iterationNum) || success;
             }
         }
         
@@ -364,11 +365,12 @@ async function processRec(rec) {
 
 // Main
 async function main() {
-    output.markdown(`# 🔄 Image Revision
+    output.markdown(`# 🔄 Image Revision (Newest First)
 **Model:** ${model.includes('pro') ? 'Pro' : 'Flash'}  
 **Resolution:** ${model.includes('pro') ? res : '1K'}  
 **Mode:** ${mode}  
-**Style Lock:** ${styleF ? '✅' : '❌'}
+**Style Lock:** ${styleF ? '✅' : '❌'}  
+**Order:** 📌 Newest first
     `);
     
     let recs = [];
@@ -415,11 +417,11 @@ async function main() {
 ✅ **Revised:** ${ok}  
 ❌ **Failed:** ${fail}
 
-### 💡 Workflow Tip
-1. Review the new image appended to the attachment field
-2. Update the feedback field with new instructions
-3. Run this script again to iterate
-4. Each revision builds on the previous one
+### 💡 Workflow
+1. Latest revision always shown first in attachment field
+2. Update feedback field with new instructions  
+3. Run again to iterate on the newest image
+4. Scroll right in attachments to see history
     `);
 }
 
