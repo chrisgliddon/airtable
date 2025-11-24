@@ -1,4 +1,4 @@
-// Gemini Image Generator with Cloudinary Integration
+// Gemini Image Gen with Cloudinary
 
 let cfg = input.config({
     title: "🎨 Gemini + Cloudinary Image Gen",
@@ -63,7 +63,7 @@ let cfg = input.config({
         }),
         input.config.text("uploadPreset", {
             label: "Upload Preset",
-            description: "Unsigned preset from Cloudinary"
+            description: "Unsigned preset (must have folder: airtable_generations)"
         }),
         input.config.select("mode", {
             label: "Mode",
@@ -95,6 +95,7 @@ if (!apiKey?.startsWith('AIza')) throw new Error('Invalid API key');
 const hasCloudinary = cloudName && uploadPreset;
 if (hasCloudinary) {
     output.text(`☁️ Cloudinary: ${cloudName} / ${uploadPreset}`);
+    output.text(`📁 Uploads will go to: airtable_generations/`);
 } else {
     output.text('⚠️ Cloudinary not configured');
 }
@@ -138,16 +139,13 @@ function arrayBufferToBase64(buffer) {
     return base64;
 }
 
-// Convert URL to base64 - FIXED VERSION
+// Convert URL to base64
 async function urlToB64(url) {
     try {
         const resp = await remoteFetchAsync(url);
         if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
         
-        // Read response as arrayBuffer
         const arrayBuffer = await resp.arrayBuffer();
-        
-        // Convert ArrayBuffer to base64 using manual encoding
         const base64 = arrayBufferToBase64(arrayBuffer);
         
         return base64;
@@ -158,24 +156,18 @@ async function urlToB64(url) {
     }
 }
 
-// Upload to Cloudinary (Unsigned) - FIXED VERSION
+// SIMPLIFIED Cloudinary Upload - ONLY IMAGE & PRESET
 async function uploadToCloudinary(base64Image, recordId) {
     if (!hasCloudinary) return null;
     
     try {
         const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
         
-        // Create simple, clean public_id (no slashes, no special chars)
-        const timestamp = Date.now();
-        const cleanId = recordId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
-        const publicId = `gemini_${cleanId}_${timestamp}`;
-        
-        // Build form data as URL-encoded string
+        // ABSOLUTE MINIMUM - Only file and preset
         const formParams = new URLSearchParams();
         formParams.append('file', `data:image/png;base64,${base64Image}`);
         formParams.append('upload_preset', uploadPreset);
-        formParams.append('public_id', publicId);
-        formParams.append('folder', 'airtable_generated');
+        // NO TAGS, NO FOLDER, NO PUBLIC_ID - Let preset handle everything
         
         const resp = await remoteFetchAsync(url, {
             method: 'POST',
@@ -198,24 +190,37 @@ async function uploadToCloudinary(base64Image, recordId) {
     } catch (e) {
         output.text(`❌ Cloudinary: ${e.message}`);
         
-        // Instructions for user
-        if (e.message.includes('preset') || e.message.includes('401') || e.message.includes('400')) {
-            output.text('💡 Create unsigned preset in Cloudinary:');
-            output.text('1. Go to Settings → Upload');
-            output.text('2. Add upload preset');
-            output.text('3. Set Signing Mode to "Unsigned"');
-            output.text('4. Save & copy preset name');
-        }
+        // Detailed setup instructions
+        output.markdown(`
+### 🔧 Cloudinary Setup Required
+
+**Your preset "${uploadPreset}" must be configured correctly:**
+
+1. Go to Cloudinary Dashboard → **Settings** (gear icon)
+2. Click **Upload** tab
+3. Scroll to **Upload presets**
+4. Find your preset: **${uploadPreset}**
+5. Click **Edit**
+
+**Critical Settings:**
+- ✅ **Signing Mode**: Must be "Unsigned"
+- ✅ **Folder**: Enter \`airtable_generations\`
+- ✅ **Unique filename**: Check this box
+- ✅ **Use filename or externally defined Public ID**: OFF
+
+6. Click **Save**
+        `);
         
         return null;
     }
 }
 
-// Call Gemini API
+// Call Gemini API - PROMPT FROM AIRTABLE FIELD
 async function genImage(styleB64, refB64, prompt) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     
     output.text(`🤖 ${model.includes('pro') ? 'Pro' : 'Flash'} @ ${ratio}${model.includes('pro') ? ' ' + res : ''}`);
+    output.text(`📝 Prompt: ${prompt.substring(0, 50)}...`);
     
     // Resize images before sending
     styleB64 = await resizeIfNeeded(styleB64);
@@ -330,17 +335,15 @@ async function updateAttachment(recId, imageUrl) {
     if (!outF || !imageUrl) return false;
     
     try {
-        // Get existing attachments
         const record = await tbl.selectRecordAsync(recId);
         const existing = record?.getCellValue(outF) || [];
         
-        // Add new attachment
+        // Simple filename with timestamp only
         const newAttachment = {
             url: imageUrl,
-            filename: `gemini_${model.includes('pro') ? 'pro' : 'flash'}_${ratio}_${Date.now()}.png`
+            filename: `gemini_${Date.now()}.png`
         };
         
-        // Combine with existing (optional - remove if you want to replace)
         const attachments = [...existing, newAttachment];
         
         await tbl.updateRecordAsync(recId, {
@@ -355,7 +358,7 @@ async function updateAttachment(recId, imageUrl) {
     }
 }
 
-// Helper for delay - synchronous version
+// Helper for delay
 function delay(ms) {
     const start = Date.now();
     while (Date.now() - start < ms) {
@@ -363,41 +366,37 @@ function delay(ms) {
     }
 }
 
-// Process record
+// Process record - GETS PROMPT FROM AIRTABLE
 async function processRec(rec) {
     output.text(`\n📋 ${rec.name || rec.id}`);
     
     try {
         const style = rec.getCellValue(styleF);
         const ref = refF ? rec.getCellValue(refF) : null;
-        const prompt = rec.getCellValue(promptF);
+        const prompt = rec.getCellValue(promptF); // FROM AIRTABLE FIELD
         
         if (!style?.length) {
-            output.text(`⚠️ No style`);
+            output.text(`⚠️ No style image`);
             return false;
         }
         
         if (!prompt) {
-            output.text(`⚠️ No prompt`);
+            output.text(`⚠️ No prompt in field`);
             return false;
         }
         
-        // Convert images
-        output.text('🔄 Converting...');
+        output.text('🔄 Converting images...');
         const styleB64 = await urlToB64(style[0].url);
         const refB64 = ref?.length ? await urlToB64(ref[0].url) : null;
         
-        // Generate
         const genB64 = await genImage(styleB64, refB64, prompt);
         
         let success = false;
         
-        // Save base64
         if (b64F) {
             success = await saveB64(rec.id, genB64) || success;
         }
         
-        // Upload to Cloudinary & attach
         if (hasCloudinary && outF) {
             const cloudUrl = await uploadToCloudinary(genB64, rec.id);
             if (cloudUrl) {
@@ -424,13 +423,12 @@ async function main() {
 **Aspect:** ${ratio}  
 **Res:** ${model.includes('pro') ? res : '1K'}  
 **Mode:** ${mode}  
-**Storage:** ${hasCloudinary ? '☁️' : ''} ${b64F ? '💾' : ''} ${outF ? '📎' : ''}
+**Storage:** ${hasCloudinary ? '☁️ Cloudinary' : ''} ${b64F ? '💾 Base64' : ''} ${outF ? '📎 Attachments' : ''}
     `);
     
     let recs = [];
     let ok = 0, fail = 0;
     
-    // Get records
     if (mode === 'single') {
         const r = await input.recordAsync('Select record:', tbl);
         if (!r) {
@@ -444,28 +442,24 @@ async function main() {
         });
         
         if (mode === 'missing') {
-            // Create new array from readonly records
             const allRecs = Array.from(q.records);
             recs = allRecs.filter(r => {
                 const out = r.getCellValue(outF);
                 return !out?.length;
             });
         } else {
-            // Create new array from readonly records
             recs = Array.from(q.records);
         }
         
         output.text(`Found ${recs.length} records`);
     }
     
-    // Process
     for (let i = 0; i < recs.length; i++) {
         output.text(`\n--- ${i+1}/${recs.length} ---`);
         
         if (await processRec(recs[i])) ok++;
         else fail++;
         
-        // Rate limit
         if (i < recs.length - 1) {
             const delayMs = model.includes('pro') ? 3000 : 2000;
             output.text(`⏳ ${delayMs/1000}s...`);
@@ -473,7 +467,6 @@ async function main() {
         }
     }
     
-    // Summary
     output.markdown(`
 ## Done
 ✅ **Success:** ${ok}  
@@ -484,15 +477,6 @@ async function main() {
 ${hasCloudinary ? `☁️ **Cloudinary:** ${cloudName}` : '⚠️ No Cloudinary'}  
 ${b64F ? `💾 **Base64:** ${b64F.name}` : ''}  
 ${outF ? `📎 **Attachments:** ${outF.name}` : ''}
-
-${!hasCloudinary && outF ? `
-### ⚠️ Setup Cloudinary
-1. Go to Cloudinary Settings → Upload
-2. Add upload preset
-3. Set Signing Mode = "Unsigned"
-4. Save & copy preset name
-5. Add to script config
-` : ''}
     `);
 }
 
